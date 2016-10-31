@@ -16,6 +16,7 @@ using namespace std;
 static LLVMContext C;
 static IRBuilder<NoFolder> Builder(C);
 static std::unique_ptr<Module> M = llvm::make_unique<Module>("calc", C);
+static const bool phiNode = true;
 
 struct Token{
  enum Kind {
@@ -255,7 +256,7 @@ struct Lexer{
 };
 
  struct Parser {
-  Parser(std::string &ErrStr, IRBuilder<NoFolder>& Builder, LLVMContext& Context):L(), ErrStr(ErrStr), Builder(Builder), Context(Context) {}
+  Parser(std::string &ErrStr):L(), ErrStr(ErrStr) {}
  
   Value* parse() {
    if(!consumeToken(ErrStr)) {
@@ -282,8 +283,6 @@ struct Lexer{
   std::string& ErrStr;
   Token currToken;
   Lexer L;
-  IRBuilder<NoFolder> Builder;
-  LLVMContext& Context;
 
   Value* parseBooleanExpr() {
    switch(currToken.K) {
@@ -352,30 +351,64 @@ struct Lexer{
       return 0;
      }
      switch(currToken.K) {
+      case Token::OpenParen:
+       ErrStr = std::string("Successive open parans not allowed at line:column - ") + std::to_string(L.LineNum) + ":" + std::to_string(L.column);
+       return 0;
       case Token::If: {
-       if(!consumeToken(ErrStr)) {
-        return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+        Value* cond = parseBooleanExpr();
+        if(!cond) return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+       if(!phiNode) {
+        Value* a = parseExpression();
+        if(!a) return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+        Value* b = parseExpression();
+        if(!b) return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+        if(currToken.K != Token::CloseParen) {
+         ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+         return 0;
+        }
+        return Builder.CreateSelect(cond, a, b);
+       } else {
+        Function* f = Builder.GetInsertBlock()->getParent();
+        BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+        BasicBlock* elseBB = BasicBlock::Create(C, "else");
+        BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+        Builder.CreateCondBr(cond, thenBB, elseBB);
+        Builder.SetInsertPoint(thenBB); 
+        Value* a = parseExpression();
+        if(!a) return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+        Builder.CreateBr(mergeBB);
+        thenBB = Builder.GetInsertBlock();
+        f->getBasicBlockList().push_back(elseBB);
+        Builder.SetInsertPoint(elseBB);
+        Value* b = parseExpression();
+        if(!b) return 0;
+        if(!consumeToken(ErrStr)) {
+         return 0;
+        }
+        Builder.CreateBr(mergeBB);
+        elseBB = Builder.GetInsertBlock();
+        f->getBasicBlockList().push_back(mergeBB);
+        Builder.SetInsertPoint(mergeBB);
+        PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2, "iftmp");
+        phiN->addIncoming(a, thenBB);
+        phiN->addIncoming(b, elseBB);
+        return phiN;
        }
-       Value* cond = parseBooleanExpr();
-       if(!cond) return 0;
-       if(!consumeToken(ErrStr)) {
-        return 0;
-       }
-       Value* a = parseExpression();
-       if(!a) return 0;
-       if(!consumeToken(ErrStr)) {
-        return 0;
-       }
-       Value* b = parseExpression();
-       if(!b) return 0;
-       if(!consumeToken(ErrStr)) {
-        return 0;
-       }
-       if(currToken.K != Token::CloseParen) {
-        ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
-        return 0;
-       }
-       return Builder.CreateSelect(cond, a, b);
       }
       case Token::Plus:
       case Token::Minus:
@@ -403,25 +436,19 @@ struct Lexer{
        }
        switch(opToken.K) {
         case Token::Plus:
-         //return Builder.CreateSRem(Builder.CreateAdd(a, b), llvm::ConstantInt::get(C, APInt::getMaxValue(63)));
          return Builder.CreateAdd(a, b);
         case Token::Minus:
-         //return Builder.CreateSRem(Builder.CreateSub(a, b), llvm::ConstantInt::get(C, APInt::getMaxValue(63)));
          return Builder.CreateSub(a, b);
         case Token::Mult:
-         //return Builder.CreateSRem(Builder.CreateMul(a, b), llvm::ConstantInt::get(C, APInt::getMaxValue(63)));
          return Builder.CreateMul(a, b);
         case Token::Modulo:
-         //return Builder.CreateSRem(Builder.CreateSRem(a, b), llvm::ConstantInt::get(C, APInt::getMaxValue(63)));
          return Builder.CreateSRem(a, b); 
         case Token::Division:
-         //return Builder.CreateSRem(Builder.CreateSDiv(a, b), llvm::ConstantInt::get(C, APInt::getMaxValue(63)));
          return Builder.CreateSDiv(a, b);
        }
 
       } 
       default:
-       //ErrStr = std::string("Unknown token: ") + currToken.val + std::string(" at line num: ") + std::to_string(L.LineNum);
        Value* v = parseExpression();
        if(!consumeToken(ErrStr)) {
         return 0;
@@ -476,10 +503,8 @@ static int compile() {
   BasicBlock *BB = BasicBlock::Create(C, "entry", F);
   Builder.SetInsertPoint(BB);
 
-  // TODO: parse the source program
-  // TODO: generate correct LLVM instead of just an empty function
   std::string ErrStr;
-  Parser p(ErrStr, Builder, C);
+  Parser p(ErrStr);
   Value* RetVal = p.parse();
   cout << ErrStr << endl; //Value *RetVal = ConstantInt::get(C, APInt(64, 0));
   if(RetVal == 0)
