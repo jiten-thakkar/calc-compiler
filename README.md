@@ -1,6 +1,6 @@
 Skeleton for "calc" language compiler.
 The language is defined [here](https://utah.instructure.com/courses/377698/assignments/3420338) 
-and [here](https://utah.instructure.com/courses/377698/assignments/3426197) as part of advanced compiler class.
+and [here](https://utah.instructure.com/courses/377698/assignments/3426197) as part of [advanced compiler](https://utah.instructure.com/courses/377698/assignments/syllabus) class.
 
 build the compiler like this:
 
