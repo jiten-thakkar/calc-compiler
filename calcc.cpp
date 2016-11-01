@@ -13,9 +13,12 @@
 using namespace llvm;
 using namespace std;
 
+#define totalVariables 9
+
 static LLVMContext C;
 static IRBuilder<NoFolder> Builder(C);
 static std::unique_ptr<Module> M = llvm::make_unique<Module>("calc", C);
+static std::map<int, AllocaInst*> indexValue; 
 static const bool phiNode = true;
 
 struct Token{
@@ -44,8 +47,12 @@ struct Token{
   Neq,
  
   A0,A1,A2,A3, A4, A5,
+  M0,M1,M2,M3,M4,M5,M6,M7,M8,M9,
   If,
   Error,
+  Set,
+  Seq,
+  While,
   Eof
  };
  Kind K;
@@ -115,6 +122,61 @@ struct Lexer{
       ErrStr = "Argument variable is not between a0-a5" + std::to_string(LineNum);
       return Token{Token::Error, "Error"};
     }
+   case 'm':
+    column++;
+    if(cin.get(ch)) {
+     column++;
+     if(ch == '0') {
+      return Token{Token::M0, "0"};
+     } else if(ch == '1') {
+      return Token{Token::M1, "1"};
+     } else if(ch == '2') {
+      return Token{Token::M2, "2"};
+     } else if(ch == '3') {
+      return Token{Token::M3, "3"};
+     } else if(ch == '4') {
+      return Token{Token::M4, "4"};
+     } else if(ch == '5') {
+      return Token{Token::M5, "5"};
+     } else if(ch == '6') {
+      return Token{Token::M6, "6"};
+     } else if(ch == '7') {
+      return Token{Token::M7, "7"};
+     } else if(ch == '8') {
+      return Token{Token::M8, "8"};
+     } else if(ch == '9') {
+      return Token{Token::M9, "9"};
+     } else {
+      ErrStr = "Global variable is not between m0-m9 at line num: " + std::to_string(LineNum);
+      return Token{Token::Error, "Error"};
+     }
+    } else {
+      ErrStr = "Argument variable is not between a0-a5" + std::to_string(LineNum);
+      return Token{Token::Error, "Error"};
+    }
+   case 's':
+      column++;
+      if(cin.get(ch) && ch == 'e')
+       if(cin.get(ch)) {
+         column += 2;
+         if(ch == 't') 
+          return Token{Token::Set, "set"};
+         else if(ch == 'q')
+          return Token{Token::Seq, "seq"};
+       }
+      ErrStr = std::string("Unexpected character ") + ch + std::string(" at line num: ") + std::to_string(LineNum);
+      return Token{Token::Error, "Error"};
+   case 'w':
+      column++;
+      if(cin.get(ch) && ch == 'h')
+       if(cin.get(ch) && ch == 'i')
+        if(cin.get(ch) && ch == 'l') 
+         if(cin.get(ch) && ch == 'e') {
+         column += 4;
+         return Token{Token::While, "while"};
+        }
+      ErrStr = std::string("Unexpected character ") + ch + std::string(" at line num: ") + std::to_string(LineNum);
+      return Token{Token::Error, "Error"};
    case 't':
       column++;
       if(cin.get(ch) && ch == 'r')
@@ -256,8 +318,16 @@ struct Lexer{
 };
 
  struct Parser {
-  Parser(std::string &ErrStr):L(), ErrStr(ErrStr) {}
+  Parser(std::string &ErrStr):L(), ErrStr(ErrStr) {
+   initiateVariables();
+  }
  
+  void initiateVariables() {
+   for(int i=0; i<totalVariables; i++) {
+    indexValue[i] = Builder.CreateAlloca(Type::getIntNTy(C, 64), 0, "m"+std::to_string(i));
+   } 
+  }
+
   Value* parse() {
    if(!consumeToken(ErrStr)) {
     return 0;
@@ -400,6 +470,10 @@ struct Lexer{
         if(!consumeToken(ErrStr)) {
          return 0;
         }
+        if(currToken.K != Token::CloseParen) {
+         ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+         return 0;
+        }
         Builder.CreateBr(mergeBB);
         elseBB = Builder.GetInsertBlock();
         f->getBasicBlockList().push_back(mergeBB);
@@ -446,8 +520,55 @@ struct Lexer{
         case Token::Division:
          return Builder.CreateSDiv(a, b);
        }
-
       } 
+      case Token::Set: {
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       Value* e = parseExpression();
+       if(!e) return 0;
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       if(currToken.K != Token::M0 && currToken.K != Token::M1 && currToken.K != Token::M2 && currToken.K != Token::M3 && currToken.K != Token::M4
+          && currToken.K != Token::M5 && currToken.K != Token::M6 && currToken.K != Token::M7 && currToken.K != Token::M8 && currToken.K != Token::M9) {
+        ErrStr = std::string("Expecting one of the variables m0-m9 instead got ") + currToken.val + std::string(" at line:col - ") + 
+                             std::to_string(L.LineNum) + ":" + std::to_string(L.column);
+        return 0;
+       }
+       Token opToken = currToken;
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       if(currToken.K != Token::CloseParen) {
+        ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+        return 0;
+       }
+       return Builder.CreateStore(e, indexValue[std::stoi(opToken.val)]);
+      }
+      case Token::Seq: {
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       Value* e1 = parseExpression();
+       if(!e1) return 0;
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       Value* e2 = parseExpression();
+       if(!e2) return 0;
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       if(currToken.K != Token::CloseParen) {
+        ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+        return 0;
+       }
+       return e2;
+      }
+      case Token::While: {
+      
+      }
       default:
        Value* v = parseExpression();
        if(!consumeToken(ErrStr)) {
@@ -471,6 +592,18 @@ struct Lexer{
      while(index-->0)
       it++;
      return &*it;
+    }
+    case Token::M0:
+    case Token::M1:
+    case Token::M2:
+    case Token::M3:
+    case Token::M4:
+    case Token::M5:
+    case Token::M6:
+    case Token::M7:
+    case Token::M8:
+    case Token::M9: {
+     return indexValue[std::stoi(currToken.val)]; 
     }
     case Token::Int: {
      StringRef str = StringRef(currToken.val);
@@ -506,7 +639,7 @@ static int compile() {
   std::string ErrStr;
   Parser p(ErrStr);
   Value* RetVal = p.parse();
-  cout << ErrStr << endl; //Value *RetVal = ConstantInt::get(C, APInt(64, 0));
+  cout << ErrStr << endl;
   if(RetVal == 0)
    exit(1); 
   Builder.CreateRet(RetVal);
