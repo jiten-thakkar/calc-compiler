@@ -201,6 +201,9 @@ struct Lexer{
    case '+':
       column++;
       return Token{Token::Plus, "+"};
+   case '%':
+      column++;
+      return Token{Token::Modulo, "%"};
    case '*':
       column++;
       return Token{Token::Mult, "*"};
@@ -325,6 +328,7 @@ struct Lexer{
   void initiateVariables() {
    for(int i=0; i<totalVariables; i++) {
     indexValue[i] = Builder.CreateAlloca(Type::getIntNTy(C, 64), 0, "m"+std::to_string(i));
+    Builder.CreateStore(llvm::ConstantInt::getSigned(llvm::IntegerType::get(C, 64), 0), indexValue[i]);
    } 
   }
 
@@ -544,7 +548,8 @@ struct Lexer{
         ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
         return 0;
        }
-       return Builder.CreateStore(e, indexValue[std::stoi(opToken.val)]);
+       Builder.CreateStore(e, indexValue[std::stoi(opToken.val)]);
+       return e;
       }
       case Token::Seq: {
        if(!consumeToken(ErrStr)) {
@@ -567,7 +572,40 @@ struct Lexer{
        return e2;
       }
       case Token::While: {
-      
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       BasicBlock* entryBB = Builder.GetInsertBlock();
+       Function* f = Builder.GetInsertBlock()->getParent();
+       BasicBlock* condBB = BasicBlock::Create(C, "cond", f);
+       BasicBlock* afterLoopBB = BasicBlock::Create(C, "afterLoop");
+       BasicBlock* loopBB = BasicBlock::Create(C, "loop");
+       Builder.CreateBr(condBB);
+       Builder.SetInsertPoint(condBB);
+       PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2, "condtmp");
+       phiN->addIncoming(llvm::ConstantInt::get(Type::getIntNTy(C, 64), 0), entryBB);
+       Value* cond = parseBooleanExpr();
+       Builder.CreateCondBr(cond, loopBB, afterLoopBB);
+       f->getBasicBlockList().push_back(loopBB);
+       Builder.SetInsertPoint(loopBB);
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       Value* e = parseExpression();
+       if(!e) return 0;
+       loopBB = Builder.GetInsertBlock();
+       Builder.CreateBr(condBB);
+       phiN->addIncoming(e, loopBB);
+       Builder.SetInsertPoint(afterLoopBB);
+       f->getBasicBlockList().push_back(afterLoopBB); 
+       if(!consumeToken(ErrStr)) {
+        return 0;
+       }
+       if(currToken.K != Token::CloseParen) {
+        ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+        return 0;
+       }
+       return phiN;
       }
       default:
        Value* v = parseExpression();
@@ -603,7 +641,7 @@ struct Lexer{
     case Token::M7:
     case Token::M8:
     case Token::M9: {
-     return indexValue[std::stoi(currToken.val)]; 
+     return Builder.CreateLoad(indexValue[std::stoi(currToken.val)]); 
     }
     case Token::Int: {
      StringRef str = StringRef(currToken.val);
