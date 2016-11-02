@@ -608,15 +608,8 @@ struct Lexer{
        return phiN;
       }
       default:
-       Value* v = parseExpression();
-       if(!consumeToken(ErrStr)) {
-        return 0;
-       }
-       if(currToken.K != Token::CloseParen) {
-        ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
-        return 0;
-       }
-       return v;
+       ErrStr = std::string("Expected non constant expression at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
+       return 0;
      }
     case Token::A0:
     case Token::A1:
