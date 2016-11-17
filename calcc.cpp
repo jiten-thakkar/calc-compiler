@@ -13,13 +13,14 @@
 using namespace llvm;
 using namespace std;
 
-#define totalVariables 9
+#define totalVariables 10
 
 static LLVMContext C;
 static IRBuilder<NoFolder> Builder(C);
 static std::unique_ptr<Module> M = llvm::make_unique<Module>("calc", C);
 static std::map<int, AllocaInst*> indexValue; 
 static const bool phiNode = true;
+static bool check=false;
 
 struct Token{
  enum Kind {
@@ -66,6 +67,7 @@ struct Lexer{
   bool notIncrease = false;
   char ch;
   unsigned column = 0;
+  unsigned offset = -1;
  Token getNextToken(std::string &ErrStr) {
   while(1) {
    if(!notIncrease) {
@@ -77,31 +79,39 @@ struct Lexer{
    case '\n':
     LineNum++;
     column = 0;
+    offset++;
     continue;
    case ' ':
    case '\0':
    case '\t':
    case '\r':
+    offset++;
     column++;
     continue;
    case '#':
+    offset++;
     if(column != 0) {
      ErrStr = std::string("Expect # at the beginning of the line instead found at line:column - ") + std::to_string(LineNum) + ":" + std::to_string(column);
      return Token{Token::Error};
     }
-    while(cin.get(ch) && ch != '\n') {}
+    while(cin.get(ch) && ch != '\n') {offset++;}
     LineNum++;
+    offset++;
     continue;
    case '(':
     column++;
+    offset++;
     return Token{Token::OpenParen, "("};
    case ')':
     column++;
+    offset++;
     return Token{Token::CloseParen, ")"};
    case 'a':
+    offset++;
     column++;
     if(cin.get(ch)) {
      column++;
+    offset++;
      if(ch == '0') {
       return Token{Token::A0, "0"};
      } else if(ch == '1') {
@@ -124,8 +134,10 @@ struct Lexer{
     }
    case 'm':
     column++;
+    offset++;
     if(cin.get(ch)) {
      column++;
+    offset++;
      if(ch == '0') {
       return Token{Token::M0, "0"};
      } else if(ch == '1') {
@@ -156,9 +168,11 @@ struct Lexer{
     }
    case 's':
       column++;
+    offset++;
       if(cin.get(ch) && ch == 'e')
        if(cin.get(ch)) {
          column += 2;
+         offset += 2;
          if(ch == 't') 
           return Token{Token::Set, "set"};
          else if(ch == 'q')
@@ -168,53 +182,65 @@ struct Lexer{
       return Token{Token::Error, "Error"};
    case 'w':
       column++;
+      offset++;
       if(cin.get(ch) && ch == 'h')
        if(cin.get(ch) && ch == 'i')
         if(cin.get(ch) && ch == 'l') 
          if(cin.get(ch) && ch == 'e') {
          column += 4;
+         offset += 4;
          return Token{Token::While, "while"};
         }
       ErrStr = std::string("Unexpected character ") + ch + std::string(" at line num: ") + std::to_string(LineNum);
       return Token{Token::Error, "Error"};
    case 't':
       column++;
+      offset++;
       if(cin.get(ch) && ch == 'r')
        if(cin.get(ch) && ch == 'u')
         if(cin.get(ch) && ch == 'e') {
          column += 3;
+         offset += 3;
          return Token{Token::True, "true"};
         }
       ErrStr = std::string("Unexpected character ") + ch + std::string(" at line num: ") + std::to_string(LineNum);
       return Token{Token::Error, "Error"};
    case 'f':
       column++;
+      offset++;
       if(cin.get(ch) && ch == 'a')
        if(cin.get(ch) && ch == 'l')
         if(cin.get(ch) && ch == 's')
          if(cin.get(ch) && ch == 'e') {
           column += 4;
+          offset += 4;
           return Token{Token::False, "false"};
          }
       ErrStr = std::string("Unexpected character ") + ch + std::string(" at line num: ") + std::to_string(LineNum);
       return Token{Token::Error, "Error"};
    case '+':
+      offset++;
       column++;
       return Token{Token::Plus, "+"};
    case '%':
+      offset++;
       column++;
       return Token{Token::Modulo, "%"};
    case '*':
+      offset++;
       column++;
       return Token{Token::Mult, "*"};
    case '/':
       column++;
+      offset++;
       return Token{Token::Division, "/"};
    case '<':
       column++;
+      offset++;
       if(cin.get(ch)) {
        column++;
        if(ch == '=') {
+        offset++;
         return Token{Token::Lte, "<="};
        } else if(ch == ' ') { 
         notIncrease = true;
@@ -226,9 +252,11 @@ struct Lexer{
        }
    case '>':
       column++;
+      offset++;
       if(cin.get(ch)) {
        if(ch == '=') {
         column++;
+        offset++;
         return Token{Token::Gte, ">="};
        }
        else if(ch == ' ') {
@@ -241,8 +269,10 @@ struct Lexer{
        }
    case '=': {
       column++;
+      offset++;
       if(cin.get(ch) && ch == '=') {
        column++;
+       offset++;
        return Token{Token::Eq, "=="};
       }
       else {
@@ -252,8 +282,10 @@ struct Lexer{
    }
    case '!':
       column++;
+      offset++;
       if(cin.get(ch) && ch == '=') {
        column++;
+       offset++;
        return Token{Token::Neq, "!="};
       }
       else {
@@ -262,15 +294,16 @@ struct Lexer{
       }
     case '-': {
       column++;
+      offset++;
       if(cin.get(ch)) {
        if(ch == ' ') {
         notIncrease = true;
         return Token{Token::Minus, "-"};
-       }
-       else if(ch >= '0' && ch <= '9') {
+       } else if(ch >= '0' && ch <= '9') {
         string val = "-";
         do {
          column++;
+         offset++;
          val.push_back(ch);
         } while(cin.get(ch) && ch >= '0' && ch <= '9');
         notIncrease = true;
@@ -297,6 +330,7 @@ struct Lexer{
      string val;
      do {
       column++;
+      offset++;
       val.push_back(ch);
      } while(cin.get(ch) && ch >= '0' && ch <= '9');
      notIncrease = true;
@@ -304,8 +338,10 @@ struct Lexer{
     }
     case 'i': {
         column++;
+        offset++;
      if(cin.get(ch) && ch == 'f') {
         column++;
+        offset++;
       return Token{Token::If, "if"};
      } else {
       ErrStr = std::string("Expecting f after character i instead found ") + std::to_string(ch) + " at line nume: " + std::to_string(LineNum) ;
@@ -495,6 +531,7 @@ struct Lexer{
       case Token::Division:
       { 
        Token opToken = currToken;
+       unsigned curr_offset = L.offset;
        if(!consumeToken(ErrStr)) {
         return 0;
        }
@@ -512,17 +549,158 @@ struct Lexer{
         ErrStr = std::string("Expected close param at line num: ") + std::to_string(L.LineNum) + std::string("instead of: ") + currToken.val;
         return 0;
        }
-       switch(opToken.K) {
-        case Token::Plus:
-         return Builder.CreateAdd(a, b);
-        case Token::Minus:
-         return Builder.CreateSub(a, b);
-        case Token::Mult:
-         return Builder.CreateMul(a, b);
-        case Token::Modulo:
-         return Builder.CreateSRem(a, b); 
-        case Token::Division:
-         return Builder.CreateSDiv(a, b);
+       if(!check) {
+        switch(opToken.K) {
+         case Token::Plus:
+          return Builder.CreateAdd(a, b);
+         case Token::Minus:
+          return Builder.CreateSub(a, b);
+         case Token::Mult:
+          return Builder.CreateMul(a, b);
+         case Token::Modulo:
+          return Builder.CreateSRem(a, b); 
+         case Token::Division:
+          return Builder.CreateSDiv(a, b);
+        } 
+       } else {
+        Value* intrinsic_args[2] = {a, b};
+        Function* f = Builder.GetInsertBlock()->getParent();
+        Function* overflow_f = M->getFunction("overflow_fail");
+        switch(opToken.K) {
+         case Token::Plus: {
+          Function* intrinsic_f = Intrinsic::getDeclaration(&*M, Intrinsic::sadd_with_overflow, ArrayRef<Type *>(Type::getInt64Ty(C)));
+          Value* v = Builder.CreateCall(intrinsic_f, ArrayRef<Value*>(intrinsic_args, 2));
+          Value* result = Builder.CreateExtractValue(v, ArrayRef<unsigned>(0));
+          Value* overflow = Builder.CreateExtractValue(v, ArrayRef<unsigned>(1));
+          Value* cond = Builder.CreateICmpEQ(overflow, ConstantInt::get(Type::getInt1Ty(C), 0));
+          BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+          BasicBlock* elseBB = BasicBlock::Create(C, "else");
+          BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+          Builder.CreateCondBr(cond, thenBB, elseBB);
+          Builder.SetInsertPoint(thenBB);
+          Value* add_val = Builder.CreateAdd(a, b);
+          Builder.CreateBr(mergeBB);
+          thenBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(elseBB);
+          f->getBasicBlockList().push_back(elseBB);
+          Value* overflow_args[] = {ConstantInt::get(Type::getInt64Ty(C), curr_offset)};
+          Value* overflow_val = Builder.CreateCall(overflow_f, ArrayRef<Value*>(overflow_args, 1));
+          Builder.CreateBr(mergeBB);
+          elseBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(mergeBB);
+          f->getBasicBlockList().push_back(mergeBB);
+          PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2);
+          phiN->addIncoming(add_val, thenBB);
+          phiN->addIncoming(ConstantInt::get(Type::getInt64Ty(C), 0), elseBB);
+          return phiN;
+          }
+         case Token::Minus: {
+          Function* intrinsic_f = Intrinsic::getDeclaration(&*M, Intrinsic::ssub_with_overflow, ArrayRef<Type *>(Type::getInt64Ty(C)));
+          Value* v = Builder.CreateCall(intrinsic_f, ArrayRef<Value*>(intrinsic_args, 2));
+          Value* result = Builder.CreateExtractValue(v, ArrayRef<unsigned>(0));
+          Value* overflow = Builder.CreateExtractValue(v, ArrayRef<unsigned>(1));
+          Value* cond = Builder.CreateICmpEQ(overflow, ConstantInt::get(Type::getInt1Ty(C), 0));
+          BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+          BasicBlock* elseBB = BasicBlock::Create(C, "else");
+          BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+          Builder.CreateCondBr(cond, thenBB, elseBB);
+          Builder.SetInsertPoint(thenBB);
+          Value* add_val = Builder.CreateSub(a, b);
+          Builder.CreateBr(mergeBB);
+          thenBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(elseBB);
+          f->getBasicBlockList().push_back(elseBB);
+          Value* overflow_args[] = {ConstantInt::get(Type::getInt64Ty(C), curr_offset)};
+          Value* overflow_val = Builder.CreateCall(overflow_f, ArrayRef<Value*>(overflow_args, 1));
+          Builder.CreateBr(mergeBB);
+          elseBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(mergeBB);
+          f->getBasicBlockList().push_back(mergeBB);
+          PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2);
+          phiN->addIncoming(add_val, thenBB);
+          phiN->addIncoming(ConstantInt::get(Type::getInt64Ty(C), 0), elseBB);
+          return phiN;
+          }
+         case Token::Mult: {
+          Function* intrinsic_f = Intrinsic::getDeclaration(&*M, Intrinsic::smul_with_overflow, ArrayRef<Type *>(Type::getInt64Ty(C)));
+          Value* v = Builder.CreateCall(intrinsic_f, ArrayRef<Value*>(intrinsic_args, 2));
+          Value* result = Builder.CreateExtractValue(v, ArrayRef<unsigned>(0));
+          Value* overflow = Builder.CreateExtractValue(v, ArrayRef<unsigned>(1));
+          Value* cond = Builder.CreateICmpEQ(overflow, ConstantInt::get(Type::getInt1Ty(C), 0));
+          BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+          BasicBlock* elseBB = BasicBlock::Create(C, "else");
+          BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+          Builder.CreateCondBr(cond, thenBB, elseBB);
+          Builder.SetInsertPoint(thenBB);
+          Value* add_val = Builder.CreateMul(a, b);
+          Builder.CreateBr(mergeBB);
+          thenBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(elseBB);
+          f->getBasicBlockList().push_back(elseBB);
+          Value* overflow_args[] = {ConstantInt::get(Type::getInt64Ty(C), curr_offset)};
+          Value* overflow_val = Builder.CreateCall(overflow_f, ArrayRef<Value*>(overflow_args, 1));
+          Builder.CreateBr(mergeBB);
+          elseBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(mergeBB);
+          f->getBasicBlockList().push_back(mergeBB);
+          PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2);
+          phiN->addIncoming(add_val, thenBB);
+          phiN->addIncoming(ConstantInt::get(Type::getInt64Ty(C), 0), elseBB);
+          return phiN;
+          }
+         case Token::Modulo: {
+          Value* cond = Builder.CreateICmpNE(b, ConstantInt::get(Type::getInt1Ty(C), 0));
+          BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+          BasicBlock* elseBB = BasicBlock::Create(C, "else");
+          BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+          Builder.CreateCondBr(cond, thenBB, elseBB);
+          Builder.SetInsertPoint(thenBB);
+          Value* add_val = Builder.CreateSRem(a, b);
+          Builder.CreateBr(mergeBB);
+          thenBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(elseBB);
+          f->getBasicBlockList().push_back(elseBB);
+          Value* overflow_args[] = {ConstantInt::get(Type::getInt64Ty(C), curr_offset)};
+          Value* overflow_val = Builder.CreateCall(overflow_f, ArrayRef<Value*>(overflow_args, 1));
+          Builder.CreateBr(mergeBB);
+          elseBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(mergeBB);
+          f->getBasicBlockList().push_back(mergeBB);
+          PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2);
+          phiN->addIncoming(add_val, thenBB);
+          phiN->addIncoming(ConstantInt::get(Type::getInt64Ty(C), 0), elseBB);
+          return phiN;
+          }
+         case Token::Division: {
+          Value* cond1 = Builder.CreateICmpEQ(b, ConstantInt::get(Type::getInt64Ty(C), 0));
+          Value* cond2 = Builder.CreateICmpEQ(b, ConstantInt::get(Type::getInt64Ty(C), -1));
+          StringRef str = StringRef("-9223372036854775808");
+          Value* cond3 = Builder.CreateICmpEQ(a, ConstantInt::get(Type::getInt64Ty(C), str, 10));
+          Value* andCond = Builder.CreateAnd(cond2, cond3);
+          Value* orCond = Builder.CreateOr(andCond, cond1);
+          BasicBlock* thenBB = BasicBlock::Create(C, "then", f);
+          BasicBlock* elseBB = BasicBlock::Create(C, "else");
+          BasicBlock* mergeBB = BasicBlock::Create(C, "merge");
+          Builder.CreateCondBr(orCond, thenBB, elseBB);
+          Builder.SetInsertPoint(thenBB);
+          Value* add_val = Builder.CreateSDiv(a, b);
+          Builder.CreateBr(mergeBB);
+          thenBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(elseBB);
+          f->getBasicBlockList().push_back(elseBB);
+          Value* overflow_args[] = {ConstantInt::get(Type::getInt64Ty(C), curr_offset)};
+          Value* overflow_val = Builder.CreateCall(overflow_f, ArrayRef<Value*>(overflow_args, 1));
+          Builder.CreateBr(mergeBB);
+          elseBB = Builder.GetInsertBlock();
+          Builder.SetInsertPoint(mergeBB);
+          f->getBasicBlockList().push_back(mergeBB);
+          PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2);
+          phiN->addIncoming(add_val, thenBB);
+          phiN->addIncoming(ConstantInt::get(Type::getInt64Ty(C), 0), elseBB);
+          return phiN;
+         }
+        }
+         
        }
       } 
       case Token::Set: {
@@ -585,6 +763,7 @@ struct Lexer{
        PHINode* phiN = Builder.CreatePHI(Type::getIntNTy(C, 64), 2, "condtmp");
        phiN->addIncoming(llvm::ConstantInt::get(Type::getIntNTy(C, 64), 0), entryBB);
        Value* cond = parseBooleanExpr();
+       if(!cond) return 0;
        Builder.CreateCondBr(cond, loopBB, afterLoopBB);
        f->getBasicBlockList().push_back(loopBB);
        Builder.SetInsertPoint(loopBB);
@@ -664,6 +843,9 @@ static int compile() {
   std::vector<Type *> SixInts(6, Type::getInt64Ty(C));
   FunctionType *FT = FunctionType::get(Type::getInt64Ty(C), SixInts, false);
   Function *F = Function::Create(FT, Function::ExternalLinkage, "f", &*M);
+  std::vector<Type*> pos(1, Type::getInt64Ty(C));
+  FunctionType *overflow_ft = FunctionType::get(Type::getVoidTy(C), pos, false);
+  Function* overflow_f = Function::Create(overflow_ft, Function::ExternalLinkage, "overflow_fail", &*M);
   BasicBlock *BB = BasicBlock::Create(C, "entry", F);
   Builder.SetInsertPoint(BB);
 
@@ -679,4 +861,11 @@ static int compile() {
   return 0;
 }
 
-int main(void) { return compile(); }
+int main(int argc, char* argv[]) { 
+ assert(argc <= 2);
+ if(argc == 2) {
+  assert(!strcmp(argv[1], "-check"));
+  check = true;
+ }
+ return compile();
+}
