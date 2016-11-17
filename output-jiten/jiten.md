@@ -1,6 +1,6 @@
 Jiten/u1006746
 
-Analysis of optimizations for jdr44.ll(jdr.ll)
+Analysis of optimizations for jdr44.ll(./jdr.ll)
 
 The original code is here: jdr44.calc(https://github.com/regehr/calc-compiler/blob/master/auto-tests-hw8/jdr44.calc)
 
