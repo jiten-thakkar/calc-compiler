@@ -1,3 +1,5 @@
+#include "llvm/ExecutionEngine/GenericValue.h"
+#include "llvm/ExecutionEngine/Interpreter.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/IRBuilder.h"
@@ -16,7 +18,7 @@ using namespace std;
 #define totalVariables 10
 
 static LLVMContext C;
-static IRBuilder<NoFolder> Builder(C);
+static IRBuilder<true, NoFolder> Builder(C);
 static std::unique_ptr<Module> M = llvm::make_unique<Module>("calc", C);
 static std::map<int, AllocaInst*> indexValue; 
 static const bool phiNode = true;
@@ -858,6 +860,27 @@ static int compile() {
   Builder.CreateRet(RetVal);
   assert(!verifyModule(*M, &outs()));
   M->dump();
+
+  //Create the JIT
+  ExecutionEngine* EE = EngineBuilder(std::move(M)).create();
+  std::vector<GenericValue> args;
+  //args.push_back(*ConstantInt::get(Type::getInt64Ty(C), 8865436121217378660));
+  //args.push_back(APInt(64, 8865436121217378660));
+  GenericValue val;
+  val.IntVal = APInt(64, 8865436121217378660);
+  args.push_back(val);
+  val.IntVal = APInt(64, 0);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  args.push_back(val);
+  GenericValue gv = EE->runFunction(F, args);
+  cout << "value: " << gv.IntVal.getSExtValue() << std::endl; 
   return 0;
 }
 
