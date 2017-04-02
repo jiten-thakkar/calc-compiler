@@ -7,17 +7,29 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+#find_library (LIBSTDCXX NAMES stdc++)
+#add_compile_options(-stdlib=libstdc++)
 
-set(CMAKE_CXX_FLAGS "-std=c++11 -fno-rtti -Wall")
+#set(LLVM_LINK_COMPONENTS
+#  Core
+#  ExecutionEngine
+#  Interpreter
+#  MC
+#  Support
+#  nativecodegen
+#  )
+
+set(CMAKE_CXX_FLAGS "-std=c++11 -fno-rtti -Wall -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS")
 
 include_directories(${LLVM_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
+#add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(calcc calcc.cpp)
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs support core irreader ExecutionEngine Interpreter MC nativecodegen)
 
-target_link_libraries(calcc ${llvm_libs})
+#target_link_libraries(calcc  ${LIBSTDCXX} ${llvm_libs})
+target_link_libraries(calcc  ${llvm_libs})
 
 add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/auto-tests
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/auto-tests ${CMAKE_BINARY_DIR}/auto-tests
