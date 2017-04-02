@@ -16,3 +16,5 @@ run the compiler like this:
 run the generated code like this:
 
 clang ../driver.c out.ll -Wall -o calc
+
+//cmake .. -DLLVM_DIR=/usr/local/Cellar/llvm@3.8/3.8.1/lib/llvm-3.8/share/llvm/cmake/ -DCMAKE_CXX_COMPILER=clang++-3.8 -DCMAKE_C_COMPILER=clang-3.8 -DCMAKE_BUILD_TYPE=Debug
