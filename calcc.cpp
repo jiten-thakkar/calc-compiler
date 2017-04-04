@@ -861,26 +861,6 @@ static int compile() {
   assert(!verifyModule(*M, &outs()));
   M->dump();
 
-  //Create the JIT
-  ExecutionEngine* EE = EngineBuilder(std::move(M)).create();
-  std::vector<GenericValue> args;
-  //args.push_back(*ConstantInt::get(Type::getInt64Ty(C), 8865436121217378660));
-  //args.push_back(APInt(64, 8865436121217378660));
-  GenericValue val;
-  val.IntVal = APInt(64, 8865436121217378660);
-  args.push_back(val);
-  val.IntVal = APInt(64, 0);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  args.push_back(val);
-  GenericValue gv = EE->runFunction(F, args);
-  cout << "value: " << gv.IntVal.getSExtValue() << std::endl; 
   return 0;
 }
 

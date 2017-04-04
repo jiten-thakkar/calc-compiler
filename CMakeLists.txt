@@ -19,6 +19,8 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 #  nativecodegen
 #  )
 
+
+
 set(CMAKE_CXX_FLAGS "-std=c++11 -fno-rtti -Wall -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS")
 
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -26,10 +28,21 @@ include_directories(${LLVM_INCLUDE_DIRS})
 
 add_executable(calcc calcc.cpp)
 
-llvm_map_components_to_libnames(llvm_libs support core irreader ExecutionEngine Interpreter MC nativecodegen)
+add_library(utils STATIC
+utils.h
+utils.cpp)
+
+add_executable(calcc_basicjit calcc_basicjit.cpp)
+add_executable(calcc_basicjit1 calcc_basicjit1.cpp)
+add_executable(calcc_basicjit2 calcc_basicjit2.cpp)
+
+llvm_map_components_to_libnames(llvm_libs support core irreader ExecutionEngine Interpreter MC nativecodegen mcjit native passes)
 
 #target_link_libraries(calcc  ${LIBSTDCXX} ${llvm_libs})
 target_link_libraries(calcc  ${llvm_libs})
+target_link_libraries(calcc_basicjit  ${llvm_libs} utils)
+target_link_libraries(calcc_basicjit1  ${llvm_libs} utils)
+target_link_libraries(calcc_basicjit2  ${llvm_libs}  utils)
 
 add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/auto-tests
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/auto-tests ${CMAKE_BINARY_DIR}/auto-tests
